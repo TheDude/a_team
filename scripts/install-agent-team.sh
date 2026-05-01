@@ -4,45 +4,29 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  install-agent-team.sh <team-dir> [--skills-dir <path>] [--force] [--git-init] [--no-profiles]
+  install-agent-team.sh <team-dir> [--force] [--no-profiles]
 
 Creates a relocatable agent-team working directory, copies the handoff templates,
-and installs the role skills into a Hermes skills directory.
+and installs the role skills into each profile's skills directory.
 
 Arguments:
   <team-dir>            Target working directory to create or update.
 
 Options:
-  --skills-dir <path>   Destination for installed Hermes skills.
-                        Default: ~/.hermes/skills/agent-team
-  --force               Overwrite existing files in the target team directory
-                        and installed skill files.
-  --git-init            Run 'git init' inside the target team directory if it is
-                        not already a git repository.
+  --force               Overwrite existing files in the target team directory.
   --no-profiles         Skip automatic 'hermes profile create' commands.
   -h, --help            Show this help text.
 EOF
 }
 
 TEAM_DIR=""
-SKILLS_DIR="${HOME}/.hermes/skills/agent-team"
 FORCE=0
-GIT_INIT=0
 CREATE_PROFILES=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skills-dir)
-      [[ $# -ge 2 ]] || { echo "error: --skills-dir requires a value" >&2; exit 1; }
-      SKILLS_DIR="$2"
-      shift 2
-      ;;
     --force)
       FORCE=1
-      shift
-      ;;
-    --git-init)
-      GIT_INIT=1
       shift
       ;;
     --no-profiles)
@@ -92,10 +76,8 @@ if [[ ! -d "$SKILL_SOURCE_DIR" ]]; then
 fi
 
 TEAM_DIR="${TEAM_DIR/#\~/$HOME}"
-SKILLS_DIR="${SKILLS_DIR/#\~/$HOME}"
 mkdir -p "$TEAM_DIR"
 mkdir -p "$TEAM_DIR/templates" "$TEAM_DIR/increments" "$TEAM_DIR/test-plans" "$TEAM_DIR/reviews" "$TEAM_DIR/test-results"
-mkdir -p "$SKILLS_DIR"
 
 write_if_allowed() {
   local target="$1"
@@ -127,19 +109,42 @@ copy_if_allowed() {
 
 ensure_profile() {
   local profile_name="$1"
+  local skill_name="$2"
 
   if ! command -v hermes >/dev/null 2>&1; then
     echo "warn    hermes CLI not found; skipping profile setup"
     return 1
   fi
 
+  local profile_exists=0
   if hermes profile show "$profile_name" >/dev/null 2>&1; then
+    profile_exists=1
     echo "skip    profile $profile_name (already exists)"
-    return 0
+  else
+    hermes profile create "$profile_name" --clone-from default --clone --no-alias >/dev/null
+    echo "create  profile $profile_name"
   fi
 
-  hermes profile create "$profile_name" --clone-from default --clone --no-alias >/dev/null
-  echo "create  profile $profile_name"
+  # Copy the role skill to the profile's skills directory
+  local profile_dir="${HOME}/.hermes/profiles/${profile_name}"
+  local skill_source_dir="${SKILL_SOURCE_DIR}/${skill_name}"
+  local skill_dest_dir="${profile_dir}/skills/${skill_name}"
+
+  if [[ -d "$skill_source_dir" ]]; then
+    mkdir -p "$skill_dest_dir"
+    for src_file in "$skill_source_dir"/*; do
+      [[ -e "$src_file" ]] || continue
+      dest_file="${skill_dest_dir}/$(basename "$src_file")"
+      if [[ -e "$dest_file" && "$FORCE" -ne 1 ]]; then
+        echo "skip    $dest_file"
+      else
+        cp -r "$src_file" "$skill_dest_dir/"
+        echo "copy    $dest_file"
+      fi
+    done
+  fi
+
+  return 0
 }
 
 TEAM_NAME="$(basename "$TEAM_DIR")"
@@ -179,34 +184,21 @@ Notes:
 "
 
 for dir in increments test-plans reviews test-results; do
-  write_if_allowed "$TEAM_DIR/$dir/.gitkeep" ""
+  mkdir -p "$TEAM_DIR/$dir"
 done
 
 shopt -s nullglob
 for template in "$TEMPLATE_SOURCE_DIR"/*.md; do
   copy_if_allowed "$template" "$TEAM_DIR/templates/$(basename "$template")"
 done
-
-for skill_dir in "$SKILL_SOURCE_DIR"/*; do
-  [[ -d "$skill_dir" ]] || continue
-  skill_name="$(basename "$skill_dir")"
-  skill_file="$skill_dir/SKILL.md"
-  [[ -f "$skill_file" ]] || continue
-  copy_if_allowed "$skill_file" "$SKILLS_DIR/$skill_name/SKILL.md"
-done
 shopt -u nullglob
 
-if [[ "$GIT_INIT" -eq 1 && ! -d "$TEAM_DIR/.git" ]]; then
-  git -C "$TEAM_DIR" init >/dev/null
-  echo "git     initialized $TEAM_DIR"
-fi
-
 if [[ "$CREATE_PROFILES" -eq 1 ]]; then
-  ensure_profile "teamlead" || true
-  ensure_profile "architect" || true
-  ensure_profile "coder" || true
-  ensure_profile "reviewer" || true
-  ensure_profile "tester" || true
+  ensure_profile "teamlead" "teamlead-role" || true
+  ensure_profile "architect" "architect-role" || true
+  ensure_profile "coder" "coder-role" || true
+  ensure_profile "reviewer" "reviewer-role" || true
+  ensure_profile "tester" "tester-role" || true
 fi
 
 cat <<EOF
@@ -214,7 +206,12 @@ cat <<EOF
 done
 
 Team working directory: $TEAM_DIR
-Installed skills dir:   $SKILLS_DIR
+Role skills installed to each profile's skills directory:
+  - teamlead  -> ~/.hermes/profiles/teamlead/skills/teamlead-role/
+  - architect -> ~/.hermes/profiles/architect/skills/architect-role/
+  - coder     -> ~/.hermes/profiles/coder/skills/coder-role/
+  - reviewer  -> ~/.hermes/profiles/reviewer/skills/reviewer-role/
+  - tester    -> ~/.hermes/profiles/tester/skills/tester-role/
 
 Suggested next steps:
 1. Launch Hermes from inside the team working directory
