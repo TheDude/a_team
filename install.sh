@@ -14,6 +14,11 @@
 #
 # Run from the root of this skill repository (the directory containing
 # prompts/ and handoff_templates/).
+#
+# NEW FEATURES:
+#   --template PROFILE_NAME  Clone from an already-installed Hermes profile
+#                            using 'hermes profile create --clone'.
+#   --delete                 Remove all installed profiles completely.
 
 set -euo pipefail
 
@@ -22,9 +27,11 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 
 FORCE=0
+DELETE=0
 HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
 PROFILE_PREFIX=""
 DRY_RUN=0
+TEMPLATE_PROFILE=""
 
 usage() {
   cat <<'EOF'
@@ -36,6 +43,14 @@ Options:
   -f, --force            Overwrite existing SOUL.md and (for team-lead) the
                          handoff-templates skill. Per-profile state — memory,
                          sessions, .env, state.db — is preserved either way.
+      --template PROFILE_NAME
+                         Clone from an already-installed Hermes profile using
+                         'hermes profile create --clone <PROFILE_NAME> <new-name>'.
+                         Run 'hermes profile list' to see available profiles.
+      --delete           Remove all installed profiles completely.
+                         This deletes the entire profile directories including
+                         all state (memory, sessions, config, etc.).
+                         Use with caution!
       --hermes-home DIR  Override the Hermes home root.
                          Default: $HERMES_HOME if set, else ~/.hermes
       --prefix STR       Prefix added to each profile name. e.g. with
@@ -52,6 +67,10 @@ EOF
 while [ $# -gt 0 ]; do
   case "$1" in
     -f|--force) FORCE=1; shift ;;
+    --delete) DELETE=1; shift ;;
+    --template)
+      [ $# -ge 2 ] || { echo "--template requires an argument" >&2; exit 2; }
+      TEMPLATE_PROFILE="$2"; shift 2 ;;
     --hermes-home)
       [ $# -ge 2 ] || { echo "--hermes-home requires an argument" >&2; exit 2; }
       HERMES_HOME_DIR="$2"; shift 2 ;;
@@ -66,6 +85,60 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+PROFILES_ROOT="$HERMES_HOME_DIR/profiles"
+
+# -----------------------------------------------------------------------------
+# Handle delete mode
+# -----------------------------------------------------------------------------
+
+if [ "$DELETE" -eq 1 ]; then
+  echo "Deleting four-role team profiles from Hermes."
+  echo "  hermes-home: $HERMES_HOME_DIR"
+  echo "  prefix:      ${PROFILE_PREFIX:-(none)}"
+  echo "  dry-run:     $([ "$DRY_RUN" -eq 1 ] && echo yes || echo no)"
+  echo
+
+  ROLES=(team-lead architect coder reviewer)
+
+  for role in "${ROLES[@]}"; do
+    profile_name="${PROFILE_PREFIX}${role}"
+    profile_dir="$PROFILES_ROOT/$profile_name"
+
+    if [ -d "$profile_dir" ]; then
+      if [ "$DRY_RUN" -eq 1 ]; then
+        echo "  [dry-run] rm -rf $profile_dir"
+      else
+        echo "  Deleting: $profile_dir"
+        rm -rf "$profile_dir"
+      fi
+    else
+      echo "  Not found: $profile_dir (skipping)"
+    fi
+  done
+
+  echo
+  echo "Done."
+  exit 0
+fi
+
+# -----------------------------------------------------------------------------
+# Validate template profile if specified
+# -----------------------------------------------------------------------------
+
+if [ -n "$TEMPLATE_PROFILE" ]; then
+  # The 'default' profile is built-in and doesn't have a directory, but can still be cloned
+  if [ "$TEMPLATE_PROFILE" != "default" ]; then
+    TEMPLATE_SOURCE="$PROFILES_ROOT/$TEMPLATE_PROFILE"
+    if [ ! -d "$TEMPLATE_SOURCE" ]; then
+      echo "Error: Template profile not found: $TEMPLATE_PROFILE" >&2
+      echo "Create a custom profile first with: hermes profile create <name>" >&2
+      exit 2
+    fi
+  fi
+  echo "Using template profile: $TEMPLATE_PROFILE"
+  echo
+fi
+
 # -----------------------------------------------------------------------------
 # Locate skill root and validate
 # -----------------------------------------------------------------------------
@@ -79,6 +152,7 @@ TEMPLATES_DIR="$SCRIPT_DIR/handoff_templates"
   echo "Run install.sh from the root of the skill repository." >&2
   exit 1
 }
+
 [ -d "$TEMPLATES_DIR" ] || {
   echo "Error: $TEMPLATES_DIR not found." >&2
   echo "Run install.sh from the root of the skill repository." >&2
@@ -92,8 +166,6 @@ for role in "${ROLES[@]}"; do
     exit 1
   }
 done
-
-PROFILES_ROOT="$HERMES_HOME_DIR/profiles"
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -122,18 +194,6 @@ strip_frontmatter() {
   ' "$file"
 }
 
-# write_file: write stdin to a file, respecting dry-run.
-write_file() {
-  local target="$1"
-  if [ "$DRY_RUN" -eq 1 ]; then
-    echo "  [dry-run] write $target"
-    cat >/dev/null
-  else
-    mkdir -p "$(dirname "$target")"
-    cat > "$target"
-  fi
-}
-
 # -----------------------------------------------------------------------------
 # Install one profile
 # -----------------------------------------------------------------------------
@@ -142,29 +202,71 @@ install_profile() {
   local role="$1"
   local profile_name="${PROFILE_PREFIX}${role}"
   local profile_dir="$PROFILES_ROOT/$profile_name"
-  local prompt_file="$PROMPTS_DIR/$role.md"
-  local soul_file="$profile_dir/SOUL.md"
 
   echo "Profile: $profile_name"
   echo "  dir: $profile_dir"
 
-  run mkdir -p "$profile_dir"
+  # Check if profile already exists
+  if [ -d "$profile_dir" ] && [ "$FORCE" -eq 0 ]; then
+    echo "  ! Profile exists — skipping (re-run with --force to overwrite)"
+    # Still check for handoff-templates skill for team-lead
+    if [ "$role" = "team-lead" ]; then
+      check_templates_skill "$profile_dir"
+    fi
+    return 0
+  fi
 
-  # SOUL.md
-  if [ -f "$soul_file" ] && [ "$FORCE" -eq 0 ]; then
-    echo "  ! SOUL.md exists — skipping (re-run with --force to overwrite)"
-  else
+  # Remove existing profile if --force
+  if [ -d "$profile_dir" ] && [ "$FORCE" -eq 1 ]; then
     if [ "$DRY_RUN" -eq 1 ]; then
-      echo "  [dry-run] write $soul_file (stripped frontmatter from $prompt_file)"
+      echo "  [dry-run] rm -rf $profile_dir"
     else
-      strip_frontmatter "$prompt_file" > "$soul_file"
+      echo "  Removing existing: $profile_dir"
+      rm -rf "$profile_dir"
+    fi
+  fi
+
+  # Create profile using hermes CLI
+  if [ -n "$TEMPLATE_PROFILE" ]; then
+    # Clone from template profile
+    if [ "$DRY_RUN" -eq 1 ]; then
+      echo "  [dry-run] hermes profile create --clone --clone-from $TEMPLATE_PROFILE $profile_name"
+    else
+      echo "  Cloning from template: $TEMPLATE_PROFILE"
+      hermes profile create --clone --clone-from "$TEMPLATE_PROFILE" "$profile_name"
+    fi
+  else
+    # Create from default prompts
+    if [ "$DRY_RUN" -eq 1 ]; then
+      echo "  [dry-run] hermes profile create $profile_name"
+      echo "  [dry-run] write $profile_dir/SOUL.md"
+    else
+      echo "  Creating new profile: $profile_name"
+      hermes profile create "$profile_name"
+      # Write SOUL.md from prompts
+      strip_frontmatter "$PROMPTS_DIR/$role.md" > "$profile_dir/SOUL.md"
       echo "  + SOUL.md written"
     fi
   fi
 
-  # Team Lead also gets the handoff-templates skill.
-  if [ "$role" = "team-lead" ]; then
+  # Team Lead also gets the handoff-templates skill (only if not using template)
+  if [ "$role" = "team-lead" ] && [ -z "$TEMPLATE_PROFILE" ]; then
     install_templates_skill "$profile_dir"
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# Check templates skill exists (for existing profiles)
+# -----------------------------------------------------------------------------
+
+check_templates_skill() {
+  local profile_dir="$1"
+  local skill_dir="$profile_dir/skills/handoff-templates"
+
+  if [ -d "$skill_dir" ]; then
+    echo "  + handoff-templates skill exists"
+  else
+    echo "  ! handoff-templates skill missing"
   fi
 }
 
@@ -238,6 +340,7 @@ echo "  hermes-home: $HERMES_HOME_DIR"
 echo "  prefix:      ${PROFILE_PREFIX:-(none)}"
 echo "  force:       $([ "$FORCE" -eq 1 ] && echo yes || echo no)"
 echo "  dry-run:     $([ "$DRY_RUN" -eq 1 ] && echo yes || echo no)"
+echo "  template:    ${TEMPLATE_PROFILE:-(default prompts/)}"
 echo
 
 run mkdir -p "$PROFILES_ROOT"
