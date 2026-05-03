@@ -7,11 +7,10 @@ the workspace layout, and the bootstrap procedure into one place.
 
 For working files referenced by this spec:
 
-- Role prompts: `prompts/`
+- Role prompts: `prompts/` — see `prompts/team-lead.md` for the full
+  bootstrap and session-resumption procedure.
 - Handoff templates: `handoff_templates/`
 - Workspace layout: `workspace-spec.md`
-- Bootstrap procedure: `bootstrap/new-project.md`
-- Bootstrap scripts: `bootstrap/new-project.sh`, `bootstrap/new-project.ps1`
 
 ---
 
@@ -205,23 +204,26 @@ transition, read first by every new Lead session.
 
 ## 6. Bootstrap
 
-Two flavors:
+Both bootstrap procedures live in the Team Lead's system prompt
+(`prompts/team-lead.md` § "Session start"). There is no separate script.
+The Lead executes the procedure using its file and shell tools.
 
-**New project bootstrap.** A deterministic script (`bootstrap/new-project.sh`
-or `.ps1`) creates the directory tree, copies the canonical templates,
-initializes `state.md` and `README.md`, runs `git init`, and prints a
-summary. The script does not invoke the Lead — that's a separate step in
-whatever harness the team is running.
+**New project bootstrap.** When the team workspace does not exist, the Lead
+collects three inputs (team name, parent directory, skill root), validates
+them, refuses on conflict, then deterministically creates the directory
+tree, copies canonical templates, initializes `state.md` / `README.md` /
+`.gitignore`, runs `git init`, and announces completion before transitioning
+into discovery.
 
-**Session resumption bootstrap.** Built into the Lead's system prompt
-(`prompts/team-lead.md` § "Session start"). The Lead reads `state.md`
-first, then the relevant Discovery Document, then the current increment's
-directory, then announces state to the user before taking any action.
-Autonomy mode does not exempt the Lead from the announce-and-confirm step
-— a user resuming after days away may have changed their mind since the
-last session.
+**Session resumption bootstrap.** When the team workspace exists, the Lead
+reads `state.md` first, then the active Discovery Document, then the
+current increment's directory, and announces state to the user before
+taking any action. Autonomy mode does not exempt the Lead from the
+announce-and-confirm step — a user resuming after days away may have
+changed their mind since the last session.
 
-See `bootstrap/new-project.md` for the procedure document.
+The bootstrap procedure is intentionally deterministic. The Lead does not
+exercise judgment during bootstrap; everything is prescribed in the prompt.
 
 ## 7. Lead's verification responsibilities
 

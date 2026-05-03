@@ -6,9 +6,10 @@ Team Lead, an Architect, a Coder, and a Reviewer; the Lead orchestrates,
 specialists are invoked with curated context, and every handoff is a
 structured artifact.
 
-This repository is the **skill** — the prompts, templates, layout spec, and
-bootstrap scripts. It is not a team workspace itself. To create a team
-workspace, run the bootstrap script (see "Quick start" below).
+This repository is the **skill** — the prompts, templates, and layout spec.
+It is not a team workspace itself. To create a team workspace, open a Team
+Lead session and point it at this skill (see "Quick start" below). The Lead
+handles bootstrap; there is no separate script.
 
 ## Repository layout
 
@@ -18,45 +19,37 @@ a_team/
 ├── spec.md                  # Canonical spec — read this first.
 ├── workspace-spec.md        # Team workspace layout reference.
 ├── prompts/                 # System prompts for the four roles.
-│   ├── team-lead.md
+│   ├── team-lead.md         # Includes the bootstrap + session-resumption procedure.
 │   ├── architect.md
 │   ├── coder.md
 │   └── reviewer.md
-├── handoff_templates/       # Markdown + YAML-frontmatter templates.
-│   ├── discovery-document.md
-│   ├── increment.md
-│   ├── design-package.md
-│   ├── coder-report.md
-│   ├── review-report.md
-│   ├── decision-log-entry.md
-│   ├── kickback.md
-│   └── state.md
-└── bootstrap/
-    ├── new-project.md       # Bootstrap procedure (documentation).
-    ├── new-project.sh       # POSIX shell bootstrap script.
-    └── new-project.ps1      # PowerShell bootstrap script.
+└── handoff_templates/       # Markdown + YAML-frontmatter templates.
+    ├── discovery-document.md
+    ├── increment.md
+    ├── design-package.md
+    ├── coder-report.md
+    ├── review-report.md
+    ├── decision-log-entry.md
+    ├── kickback.md
+    └── state.md
 ```
 
 ## Quick start
 
 To create a new team workspace:
 
-```bash
-# POSIX
-./bootstrap/new-project.sh widget-team ~/projects
+1. Open a Team Lead session in your harness (Hermes, Claude Agent SDK,
+   LangGraph, etc.) using `prompts/team-lead.md` as the system prompt.
+2. Tell the Lead the team name, the parent directory where the workspace
+   should live, and the path to this skill (so the Lead knows where to
+   copy `handoff_templates/` from).
+3. The Lead validates inputs, creates the directory tree, copies the
+   templates, initializes `state.md` / `README.md` / `.gitignore`, runs
+   `git init`, and announces completion before transitioning into discovery.
 
-# Windows PowerShell
-.\bootstrap\new-project.ps1 -TeamName widget-team -ParentDir C:\projects
-```
-
-This creates `~/projects/widget-team/` (or the Windows equivalent) with the
-canonical directory tree, copies the handoff templates into it, initializes
-`state.md` and `README.md`, and runs `git init` with an initial commit.
-
-Then open a Team Lead session in your harness (Hermes, Claude Agent SDK,
-LangGraph, etc.) using `prompts/team-lead.md` as the system prompt and the
-new workspace as the working directory. The Lead will read `state.md` and
-propose starting discovery with you.
+To resume an existing team, point the Lead at the workspace directory.
+The Lead will read `state.md` first and announce the current state before
+taking any action.
 
 ## Conceptual flow
 

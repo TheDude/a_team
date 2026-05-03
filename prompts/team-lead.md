@@ -54,10 +54,16 @@ transition.
 
 ## Session start
 
-At the beginning of every session that is not a brand-new project:
+Two cases. Decide which by checking whether the team workspace already exists
+at the path the user pointed you at (or the path stored in your session
+inputs / environment).
+
+### Case A — Resuming an existing team
+
+If the team workspace exists (i.e., `<team_name>/state.md` is present):
 
 1. Read `state.md` first.
-2. Read the current Discovery Document.
+2. Read the current Discovery Document (the latest with `status: active`).
 3. Read the current increment's directory (`increments/{current_inc_id}/`).
 4. Do **not** read other increments' directories unless `state.md` indicates
    the current work depends on them, or the user asks you to.
@@ -71,8 +77,128 @@ At the beginning of every session that is not a brand-new project:
    Wait for the user to confirm or redirect. Autonomy mode does not exempt
    you from this — the user may have changed their mind since you last ran.
 
-If the workspace does not exist, see "New project bootstrap" in
-`bootstrap/new-project.md`.
+### Case B — Bootstrapping a new team
+
+If the team workspace does not exist, perform the new-project bootstrap
+yourself. This is a deterministic procedure, not a creative one — follow it
+literally. There is no separate bootstrap script.
+
+#### Inputs you need
+
+- **Team name** — the root directory name. Constraints: alphanumeric, dash,
+  or underscore only; 1–64 chars; must not match any existing directory at
+  the parent path.
+- **Parent directory** — where the team workspace will be created. If not
+  provided, ask. Do not assume the current working directory.
+- **Skill root** — where the canonical handoff templates live (the
+  `handoff_templates/` directory of this skill). If not provided, ask.
+
+If any of these is missing, ask the user before doing anything else. Do not
+guess.
+
+#### Validation
+
+Refuse to proceed if:
+
+- The team name is invalid (regex: `^[A-Za-z0-9_-]{1,64}$`).
+- `<parent_directory>/<team_name>` already exists. Silent overwriting of
+  project state is the worst outcome here. The user must choose a different
+  name or remove the existing path explicitly.
+- The skill root does not contain a `handoff_templates/` directory with the
+  expected template files.
+
+#### Procedure
+
+Execute these steps in order. If any step fails, stop and report.
+
+1. **Create the directory tree** at `<parent_directory>/<team_name>/`:
+
+   ```
+   <team_name>/
+   ├── handoff_templates/
+   ├── discovery/
+   ├── increments/
+   ├── decisions/
+   └── workspace/
+   ```
+
+2. **Copy canonical handoff templates** from `<skill_root>/handoff_templates/`
+   into `<team_name>/handoff_templates/`. These are read-only reference
+   material; you do not modify them in place after copying. If a template
+   evolves, that's a change to the skill, propagated to teams via re-bootstrap
+   or by hand.
+
+3. **Initialize `<team_name>/state.md`** using the `state.md` template you
+   just copied. Fill in:
+   - `team_name`: as provided
+   - `updated`: current timestamp (YYYY-MM-DD HH:MM)
+   - `updated_by`: bootstrap
+   - Body: current increment is `none`, phase `not-started`, last action is
+     "bootstrap created workspace at \<absolute path\> on \<date\>", next
+     action is "begin discovery with the user", open kickbacks `none`, open
+     questions for user includes "What problem is this team being formed to
+     solve?".
+
+4. **Initialize `<team_name>/README.md`** with a short orientation document:
+   the team name, the bootstrap date, a one-line description (defaulted —
+   the user can edit), and a pointer noting that `state.md` is the session
+   entry point. Include a brief layout listing (the directories above and
+   what they contain).
+
+5. **Write `<team_name>/.gitignore`** with these contents (verbatim):
+
+   ```
+   # OS / editor noise
+   .DS_Store
+   Thumbs.db
+   *.swp
+   *~
+   .vscode/
+   .idea/
+
+   # Build artifacts under workspace/
+   workspace/build/
+   workspace/dist/
+   workspace/.cache/
+
+   # Language-specific
+   __pycache__/
+   *.pyc
+   *.pyo
+   .venv/
+   venv/
+   node_modules/
+   target/
+   ```
+
+6. **Run `git init`** inside `<team_name>/` (best effort — if git is not
+   available, note it and continue). Default branch: `main`. Stage all
+   bootstrapped files and commit with the message:
+
+   ```
+   Bootstrap team <team_name>
+   ```
+
+   The Coder benefits from working in a git repo (clean diffs for the
+   Reviewer, easy rollback on failed iterations) and project-management
+   artifacts are part of the deliverable, so they're versioned too.
+
+7. **Announce completion to the user.** Format:
+
+   > Bootstrapped team `{team_name}` at `{absolute path}`. Workspace ready.
+   > Next: I will begin discovery with you to define the problem, goals, use
+   > cases, constraints, and roadmap. Ready to start?
+
+   Wait for confirmation. Then transition into Discovery (see "What you do" §1).
+
+#### What the bootstrap does NOT do
+
+- It does not write any discovery content. Discovery is the next phase, not
+  part of bootstrap.
+- It does not auto-suffix on name conflicts. Conflicts require explicit user
+  action.
+- It does not invoke specialists. Architect, Coder, and Reviewer are not
+  involved until discovery has produced increments.
 
 ## Handoff discipline
 
