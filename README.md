@@ -1,164 +1,87 @@
-# a_team
+# a_team — Hermes Engineering Team Skill
 
-Starter kit for a Hermes-based multi-agent software development team.
+A four-role autonomous software engineering team designed to run on
+[Hermes](https://nousresearch.com/) (Nous Research). The team consists of a
+Team Lead, an Architect, a Coder, and a Reviewer; the Lead orchestrates,
+specialists are invoked with curated context, and every handoff is a
+structured artifact.
 
-This repository is now designed as a relocatable team-kit that can scaffold a project-local team working directory such as `agent-team/` inside any software repository.
+This repository is the **skill** — the prompts, templates, layout spec, and
+bootstrap scripts. It is not a team workspace itself. To create a team
+workspace, run the bootstrap script (see "Quick start" below).
 
-Core idea:
-- this repo contains the source-of-truth role skills and handoff templates
-- a generated team working directory contains the live shared state for a specific project
-- the generated team working directory is safe to commit to git alongside the target software project
+## Repository layout
 
-## Recommended Team Working Directory Layout
-
-Create a directory such as `agent-team/` in the target repository root with:
-- `backlog.md`
-- `decisions.md`
-- `increments/`
-- `test-plans/`
-- `reviews/`
-- `test-results/`
-- `templates/`
-
-This directory is the shared operational state for the agent team.
-
-Important distinction:
-- `skills/.../SKILL.md` in this kit define runtime role behavior
-- `templates/*.md` define structured handoffs and reporting contracts
-- files in the generated team working directory hold project-specific team state
-
-In other words:
-- skills shape behavior
-- templates shape communication
-- the team working directory stores durable project state
-
-## Current Layout In This Repository
-
-### Role skills
-- `skills/teamlead-role/SKILL.md`
-- `skills/architect-role/SKILL.md`
-- `skills/coder-role/SKILL.md`
-- `skills/reviewer-role/SKILL.md`
-- `skills/tester-role/SKILL.md`
-
-### Templates
-
-#### Team Lead -> specialist handoffs
-- `templates/teamlead-to-architect.md`
-- `templates/teamlead-to-tester-test-design.md`
-- `templates/teamlead-to-coder.md`
-- `templates/teamlead-to-tester-execution.md`
-
-#### Specialist -> Team Lead outputs
-- `templates/architect-to-teamlead.md`
-- `templates/coder-to-teamlead.md`
-- `templates/reviewer-to-teamlead.md`
-- `templates/tester-design-to-teamlead.md`
-- `templates/tester-execution-to-teamlead.md`
-
-#### Cross-role support
-- `templates/coder-to-reviewer.md`
-- `templates/blocker-report.md`
-- `templates/teamlead-status-report.md`
-
-### Installer
-- `scripts/install-agent-team.sh`
-
-The installer creates a working directory, copies the templates into it, and installs the role skills into a Hermes skills directory.
-
-## Template Path Convention
-
-The role skills in this repo now reference templates as:
-- `./templates/...`
-
-Interpretation:
-- the active agent should be launched from inside the generated team working directory, or at minimum treat that directory as the current coordination root
-- template lookups are relative to that active team working directory
-
-This removes the old hardcoded dependency on `~/projects/a_team/templates/`.
-
-## Installer Usage
-
-Example:
-
-```bash
-~/projects/a_team/scripts/install-agent-team.sh ./agent-team --git-init
+```
+a_team/
+├── README.md                # This file.
+├── spec.md                  # Canonical spec — read this first.
+├── workspace-spec.md        # Team workspace layout reference.
+├── prompts/                 # System prompts for the four roles.
+│   ├── team-lead.md
+│   ├── architect.md
+│   ├── coder.md
+│   └── reviewer.md
+├── handoff_templates/       # Markdown + YAML-frontmatter templates.
+│   ├── discovery-document.md
+│   ├── increment.md
+│   ├── design-package.md
+│   ├── coder-report.md
+│   ├── review-report.md
+│   ├── decision-log-entry.md
+│   ├── kickback.md
+│   └── state.md
+└── bootstrap/
+    ├── new-project.md       # Bootstrap procedure (documentation).
+    ├── new-project.sh       # POSIX shell bootstrap script.
+    └── new-project.ps1      # PowerShell bootstrap script.
 ```
 
-This will:
-- create `./agent-team/`
-- create `backlog.md`, `decisions.md`, `increments/`, `test-plans/`, `reviews/`, `test-results/`
-- copy all handoff templates into `./agent-team/templates/`
-- install role skills under `~/.hermes/skills/agent-team/` by default
-- optionally initialize git in the team directory
+## Quick start
 
-Optional flags:
-- `--skills-dir <path>` to choose a different Hermes skill installation directory
-- `--force` to overwrite existing files
-- `--git-init` to initialize a git repo in the generated team directory
-- `--no-profiles` to skip automatic creation of `teamlead`, `architect`, `coder`, `reviewer`, and `tester` profiles
+To create a new team workspace:
 
-## Recommended Hermes Mapping
+```bash
+# POSIX
+./bootstrap/new-project.sh widget-team ~/projects
 
-Recommended profile mapping:
-- profile: `teamlead`  -> load skill: `teamlead-role`
-- profile: `architect` -> load skill: `architect-role`
-- profile: `coder`     -> load skill: `coder-role`
-- profile: `reviewer`  -> load skill: `reviewer-role`
-- profile: `tester`    -> load skill: `tester-role`
+# Windows PowerShell
+.\bootstrap\new-project.ps1 -TeamName widget-team -ParentDir C:\projects
+```
 
-Suggested launch pattern:
-- `cd agent-team && hermes -p teamlead -s teamlead-role`
-- `cd agent-team && hermes -p architect -s architect-role`
-- `cd agent-team && hermes -p coder -s coder-role`
-- `cd agent-team && hermes -p reviewer -s reviewer-role`
-- `cd agent-team && hermes -p tester -s tester-role`
+This creates `~/projects/widget-team/` (or the Windows equivalent) with the
+canonical directory tree, copies the handoff templates into it, initializes
+`state.md` and `README.md`, and runs `git init` with an initial commit.
 
-## Recommended Operating Model
+Then open a Team Lead session in your harness (Hermes, Claude Agent SDK,
+LangGraph, etc.) using `prompts/team-lead.md` as the system prompt and the
+new workspace as the working directory. The Lead will read `state.md` and
+propose starting discovery with you.
 
-Default workflow:
-1. User and Team Lead discuss goals and constraints.
-2. Team Lead creates a scoped vertical slice.
-3. Team Lead routes selectively:
-   - Architect when design work is needed
-   - Tester in test-design mode when acceptance or integration planning is needed
-   - Coder for implementation
-   - Reviewer before final test execution
-   - Tester in execution mode for integration or regression validation
-4. Team Lead triages results, re-plans if needed, and reports back to the user.
+## Conceptual flow
 
-## Parallel Work Pattern
+1. The Lead conducts discovery with the user, producing a Discovery Document
+   and a roadmap of increments.
+2. The Lead picks the next increment, drafts the Increment artifact.
+3. The Lead invokes the Architect with the Discovery Document and the
+   Increment; the Architect returns a Design Package.
+4. The Lead verifies the Design Package against the Discovery Document.
+5. The Lead invokes the Coder with the Design Package; the Coder writes
+   tests, then code, then submits a Coder Report.
+6. The Lead invokes the Reviewer with the Design, Report, and diff; the
+   Reviewer returns a Review Report. **Review is unconditional.**
+7. The Lead resolves any blocking issues (via kickback to the Coder),
+   then kicks off CI/CD.
+8. On green CI/CD, the increment is marked `done`.
 
-For the full team experience, run roles in separate `tmux` sessions and use worktree isolation where needed.
+See `spec.md` for the full design rationale, including what the team is and
+isn't trying to do, the phase machine, kickback protocol, and the open
+questions that this version doesn't pin down (eval harness, sandboxed views,
+parallel increments).
 
-Example pattern:
-- `tmux new-session -d -s teamlead 'cd agent-team && hermes -p teamlead -s teamlead-role'`
-- `tmux new-session -d -s architect 'cd agent-team && hermes -p architect -s architect-role'`
-- `tmux new-session -d -s coder 'cd agent-team && hermes -p coder -s coder-role -w'`
-- `tmux new-session -d -s reviewer 'cd agent-team && hermes -p reviewer -s reviewer-role -w'`
-- `tmux new-session -d -s tester 'cd agent-team && hermes -p tester -s tester-role -w'`
+## Status
 
-Use the Team Lead as the only role that talks directly to the human by default.
-
-## Practical Rule
-
-- If you want something followed automatically, put the critical version in a skill.
-- If you want something documented, editable, and inspectable, put it in the team working directory.
-- If you want consistent communication between roles, use templates.
-
-## Thoughts On Your Proposal
-
-Yes — this is a stronger design.
-
-Why it is better:
-- it makes each team instance self-contained and portable
-- it turns the workflow artifacts into first-class repo state
-- it avoids hardcoded local paths
-- it makes installation repeatable
-- it supports multiple teams across multiple repos with the same base kit
-- it makes git a natural audit trail for backlog, decisions, reviews, and test results
-
-The one subtle rule to preserve is this:
-- the live role skills are installed into Hermes
-- the live team state and live templates sit in the generated team directory
-- the skills should always reference the generated team directory relatively, not the kit repo absolutely
+Working draft, version 1. Expect to iterate on the role prompts and
+templates as you observe real failure modes. Treat this skill the way you
+treat any other component: write evals, replay handoffs, fold lessons back
+into the prompts.
